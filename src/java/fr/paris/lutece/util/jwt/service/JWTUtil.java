@@ -72,7 +72,7 @@ public class JWTUtil
         // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
         if ( strBase64JWT == null )
         {
-            strBase64JWT = getAuthozirationBearerValue( request );
+            strBase64JWT = getAuthorizationBearerValue( request );
         }
 
         if ( strBase64JWT != null )
@@ -106,7 +106,7 @@ public class JWTUtil
         // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
         if ( strBase64JWT == null )
         {
-            strBase64JWT = getAuthozirationBearerValue( request );
+            strBase64JWT = getAuthorizationBearerValue( request );
         }
 
         if ( strBase64JWT != null )
@@ -148,7 +148,7 @@ public class JWTUtil
         // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
         if ( strBase64JWT == null )
         {
-            strBase64JWT = getAuthozirationBearerValue( request );
+            strBase64JWT = getAuthorizationBearerValue( request );
         }
 
         getPayloadValue( strBase64JWT, strClaimName );
@@ -199,7 +199,7 @@ public class JWTUtil
         // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
         if ( strBase64JWT == null )
         {
-            strBase64JWT = getAuthozirationBearerValue( request );
+            strBase64JWT = getAuthorizationBearerValue( request );
         }
 
         return checkSignature( strBase64JWT, key );
@@ -280,7 +280,7 @@ public class JWTUtil
      *            The request
      * @return the Authorization Bearer value in the request
      */
-    private static String getAuthozirationBearerValue( HttpServletRequest request )
+    private static String getAuthorizationBearerValue( HttpServletRequest request )
     {
         Enumeration<String> headers = request.getHeaders( "Authorization" );
         while ( headers.hasMoreElements( ) )
