@@ -38,13 +38,18 @@ import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+
 import java.io.UnsupportedEncodingException;
 import java.security.Key;
+import java.security.PublicKey;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.Map.Entry;
+
+import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import jakarta.servlet.http.HttpServletRequest;
 import org.apache.logging.log4j.LogManager;
@@ -57,39 +62,7 @@ import org.apache.logging.log4j.Logger;
 public class JWTUtil
 {
     protected static final Logger LOGGER = LogManager.getLogger( "lutece.security.jwt" );
-
-    /**
-     * Check if provided request contains a JWT
-     * 
-     * @param request
-     * @param strHeaderName
-     * @return true if the request contains a JWT, false othewise
-     */
-    public static boolean containsValidUnsafeJWT( HttpServletRequest request, String strHeaderName )
-    {
-        String strBase64JWT = request.getHeader( strHeaderName );
-
-        // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
-        if ( strBase64JWT == null )
-        {
-            strBase64JWT = getAuthozirationBearerValue( request );
-        }
-
-        if ( strBase64JWT != null )
-        {
-            strBase64JWT = removeSignature( strBase64JWT );
-            try
-            {
-                Jwts.parser( ).parseClaimsJwt( strBase64JWT );
-                return true;
-            }
-            catch( JwtException e )
-            {
-                LOGGER.error( "Provided request doesn't contains any JWT in HTTP headers ", e );
-            }
-        }
-        return false;
-    }
+    private static final String NO_SECURITY_ALG_HEADER = "eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.";
 
     /**
      * Checks claims key/value inside the JWT payload
@@ -98,24 +71,26 @@ public class JWTUtil
      * @param strHeaderName
      * @param claimsToCheck
      * @return true if the key/values are present, false otherwise
+     * @deprecated This method should not be used because there is no control over the signature of the token.
      */
-    public static boolean checkPayloadValues( HttpServletRequest request, String strHeaderName, Map<String, String> claimsToCheck )
+    @Deprecated
+    public static boolean checkUnsecuredPayloadValues( HttpServletRequest request, String strHeaderName, Map<String, String> claimsToCheck )
     {
         String strBase64JWT = request.getHeader( strHeaderName );
 
         // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
         if ( strBase64JWT == null )
         {
-            strBase64JWT = getAuthozirationBearerValue( request );
+            strBase64JWT = getAuthorizationBearerValue( request );
         }
 
         if ( strBase64JWT != null )
         {
-            strBase64JWT = removeSignature( strBase64JWT );
+            String strUnsecuredBase64JWT = getUnsecuredBase64JWT( strBase64JWT );
             try
             {
-                Claims claims = Jwts.parser( ).parseClaimsJwt( strBase64JWT ).getBody( );
-
+                Claims claims = Jwts.parser( ).unsecured( ).build( ).parseUnsecuredClaims( strUnsecuredBase64JWT ).getPayload( );
+                
                 for ( Entry<String, String> entry : claimsToCheck.entrySet( ) )
                 {
                     if ( !claims.get( entry.getKey( ), String.class ).equals( entry.getValue( ) ) )
@@ -133,54 +108,49 @@ public class JWTUtil
         return true;
     }
     
-    /**
-     * Get a payload value with given claimName;
-     * 
-     * @param request
-     * @param strHeaderName
-     * @param strClaimName
-     * @return true if the key/values are present, false otherwise
-     */
-    public static String getPayloadValue( HttpServletRequest request, String strHeaderName, String strClaimName )
+    public static boolean checkPayloadValues( HttpServletRequest request, Key key, String strHeaderName, Map<String, String> claimsToCheck )
     {
         String strBase64JWT = request.getHeader( strHeaderName );
 
         // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
         if ( strBase64JWT == null )
         {
-            strBase64JWT = getAuthozirationBearerValue( request );
+            strBase64JWT = getAuthorizationBearerValue( request );
         }
 
-        getPayloadValue( strBase64JWT, strClaimName );
-        return null;
-    }
-    
-    /**
-     * Get a payload value with given claimName;
-     * 
-     * @param strBase64JWT
-     * @param strClaimName
-     * @return true if the key/values are present, false otherwise
-     */
-    public static String getPayloadValue( String strBase64JWT, String strClaimName )
-    {
         if ( strBase64JWT != null && !strBase64JWT.isEmpty( ) )
         {
-            strBase64JWT = removeSignature( strBase64JWT );
             try
             {
-                Claims claims = Jwts.parser( ).parseClaimsJwt( strBase64JWT ).getBody( );
-
-                return (String) claims.get( strClaimName );
+                Claims claims = null;
+                if (key instanceof SecretKey)
+                {
+                    claims = Jwts.parser( ).verifyWith( (SecretKey) key ).build( ).parseSignedClaims( strBase64JWT ).getPayload( );
+                }
+                else
+                {
+                    claims = Jwts.parser( ).verifyWith( (PublicKey) key ).build( ).parseSignedClaims( strBase64JWT ).getPayload( );
+                }
+                if ( null != claims )
+                {
+                    for ( Entry<String, String> entry : claimsToCheck.entrySet( ) )
+                    {
+                        if ( !claims.get( entry.getKey( ), String.class ).equals( entry.getValue( ) ) )
+                        {
+                            return false;
+                        }
+                    }
+                }
             }
             catch( Exception e )
             {
                 LOGGER.error( "Unable to get JWT Payload value", e );
+                return false;
             }
         }
-        return null;
+        return true;
     }
-
+    
     /**
      * Check the JWT signature with provided java security Key: this can be a RSA Public Key
      * 
@@ -199,12 +169,11 @@ public class JWTUtil
         // If no specific Header is provided, use spec JWT : try to fetch in Authorization: Bearer HTTP Header
         if ( strBase64JWT == null )
         {
-            strBase64JWT = getAuthozirationBearerValue( request );
+            strBase64JWT = getAuthorizationBearerValue( request );
         }
 
         return checkSignature( strBase64JWT, key );
     }
-
     
     /**
      * Check the signature of the JWT with a secret key
@@ -223,7 +192,7 @@ public class JWTUtil
     {
             JwtBuilder builder = Jwts.builder();
             
-            builder.setIssuedAt( Date.from(Instant.now( ) ) );
+            builder.issuedAt( Date.from(Instant.now( ) ) );
             
             //Set claims
             for ( Entry<String,String> entry : mapClaims.entrySet( ) )
@@ -233,28 +202,24 @@ public class JWTUtil
             
             if ( expirationDate != null )
             {
-                builder.setExpiration( expirationDate );
+                builder.expiration( expirationDate );
             }
             
             
             if ( key != null )
             {
-                SignatureAlgorithm algo = SignatureAlgorithm.valueOf( strAlgo );
-                if ( algo != null  )
-                {
-                    builder.signWith( algo, key );
-                }
+                builder.signWith( key );
             }
                 
             return builder.compact();
     }
     
     /**
-     * Get a java security Key from a String secreyKey and algorythm name
+     * Get a java security Key from a String secretKey and algorithm name
      * @param strSecretKey
      *              The secret Key
      * @param strAlgoName
-     *              The algorythm name
+     *              The algorithm name
      * @return The java securitySecretKey 
      */
     public static Key getKey( String strSecretKey, String strAlgoName )
@@ -262,7 +227,7 @@ public class JWTUtil
         try
         {
             Key key = new SecretKeySpec( strSecretKey.getBytes( "UTF-8"), strAlgoName );
-            return key;
+            return Keys.hmacShaKeyFor( key.getEncoded( ) );
         }
         catch ( UnsupportedEncodingException e )
         {
@@ -280,7 +245,7 @@ public class JWTUtil
      *            The request
      * @return the Authorization Bearer value in the request
      */
-    private static String getAuthozirationBearerValue( HttpServletRequest request )
+    private static String getAuthorizationBearerValue( HttpServletRequest request )
     {
         Enumeration<String> headers = request.getHeaders( "Authorization" );
         while ( headers.hasMoreElements( ) )
@@ -305,7 +270,14 @@ public class JWTUtil
     {
         try
         {
-            Jwts.parser( ).setSigningKey( key ).parseClaimsJws( strBase64JWT );
+            if (key instanceof SecretKey)
+            {
+                Jwts.parser( ).verifyWith( (SecretKey) key ).build( ).parseSignedClaims( strBase64JWT ).getPayload( );
+            }
+            else 
+            {
+                Jwts.parser( ).verifyWith( (PublicKey) key ).build( ).parseSignedClaims( strBase64JWT ).getPayload( );
+            }
         }
 
         catch( JwtException e )
@@ -316,14 +288,15 @@ public class JWTUtil
     }
 
     /**
-     * Remove a signature from a base64 JWT string
+     * Removes signature and replaces header with an unsigned header (alg = none)
      * 
      * @param strBase64JWT
-     * @return the JWT without signature
+     * @return
      */
-    private static String removeSignature( String strBase64JWT )
+    private static String getUnsecuredBase64JWT( String strBase64JWT )
     {
-        int i = strBase64JWT.lastIndexOf( "." );
-        return strBase64JWT.substring( 0, i + 1 );
+        String s = strBase64JWT.split( "\\." )[1];
+        return NO_SECURITY_ALG_HEADER + s + ".";
     }
+    
 }
