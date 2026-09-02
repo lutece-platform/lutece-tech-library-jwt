@@ -37,14 +37,16 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
 import java.io.UnsupportedEncodingException;
 import java.security.Key;
+import java.security.PublicKey;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.Map.Entry;
+import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.logging.log4j.LogManager;
@@ -57,6 +59,7 @@ import org.apache.logging.log4j.Logger;
 public class JWTUtil
 {
     protected static final Logger LOGGER = LogManager.getLogger( "lutece.security.jwt" );
+    private static final String NO_SECURITY_ALG_HEADER = "eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.";
 
     /**
      * Check if provided request contains a JWT
@@ -77,10 +80,10 @@ public class JWTUtil
 
         if ( strBase64JWT != null )
         {
-            strBase64JWT = removeSignature( strBase64JWT );
+            String strUnsecuredBase64JWT = getUnsecuredBase64JWT( strBase64JWT );
             try
             {
-                Jwts.parser( ).parseClaimsJwt( strBase64JWT );
+                Jwts.parser( ).unsecured( ).build( ).parseUnsecuredClaims( strUnsecuredBase64JWT );
                 return true;
             }
             catch( JwtException e )
@@ -111,10 +114,10 @@ public class JWTUtil
 
         if ( strBase64JWT != null )
         {
-            strBase64JWT = removeSignature( strBase64JWT );
+            String strUnsecuredBase64JWT = getUnsecuredBase64JWT( strBase64JWT );
             try
             {
-                Claims claims = Jwts.parser( ).parseClaimsJwt( strBase64JWT ).getBody( );
+                Claims claims = Jwts.parser( ).unsecured( ).build( ).parseUnsecuredClaims( strUnsecuredBase64JWT ).getPayload( );
 
                 for ( Entry<String, String> entry : claimsToCheck.entrySet( ) )
                 {
@@ -166,10 +169,10 @@ public class JWTUtil
     {
         if ( strBase64JWT != null && !strBase64JWT.isEmpty( ) )
         {
-            strBase64JWT = removeSignature( strBase64JWT );
+            String strUnsecuredBase64JWT = getUnsecuredBase64JWT( strBase64JWT );
             try
             {
-                Claims claims = Jwts.parser( ).parseClaimsJwt( strBase64JWT ).getBody( );
+                Claims claims = Jwts.parser( ).unsecured( ).build( ).parseUnsecuredClaims( strUnsecuredBase64JWT ).getPayload( );
 
                 return (String) claims.get( strClaimName );
             }
@@ -223,7 +226,7 @@ public class JWTUtil
     {
             JwtBuilder builder = Jwts.builder();
             
-            builder.setIssuedAt( Date.from(Instant.now( ) ) );
+            builder.issuedAt( Date.from(Instant.now( ) ) );
             
             //Set claims
             for ( Entry<String,String> entry : mapClaims.entrySet( ) )
@@ -233,17 +236,14 @@ public class JWTUtil
             
             if ( expirationDate != null )
             {
-                builder.setExpiration( expirationDate );
+                builder.expiration( expirationDate );
             }
             
             
             if ( key != null )
             {
-                SignatureAlgorithm algo = SignatureAlgorithm.valueOf( strAlgo );
-                if ( algo != null  )
-                {
-                    builder.signWith( algo, key );
-                }
+                // Since jjwt 0.12, the signature algorithm is inferred from the key itself
+                builder.signWith( key );
             }
                 
             return builder.compact();
@@ -262,7 +262,7 @@ public class JWTUtil
         try
         {
             Key key = new SecretKeySpec( strSecretKey.getBytes( "UTF-8"), strAlgoName );
-            return key;
+            return Keys.hmacShaKeyFor( key.getEncoded( ) );
         }
         catch ( UnsupportedEncodingException e )
         {
@@ -305,7 +305,14 @@ public class JWTUtil
     {
         try
         {
-            Jwts.parser( ).setSigningKey( key ).parseClaimsJws( strBase64JWT );
+            if ( key instanceof SecretKey )
+            {
+                Jwts.parser( ).verifyWith( (SecretKey) key ).build( ).parseSignedClaims( strBase64JWT );
+            }
+            else
+            {
+                Jwts.parser( ).verifyWith( (PublicKey) key ).build( ).parseSignedClaims( strBase64JWT );
+            }
         }
 
         catch( JwtException e )
@@ -316,14 +323,16 @@ public class JWTUtil
     }
 
     /**
-     * Remove a signature from a base64 JWT string
+     * Removes the signature and replaces the header with an unsigned header (alg = none).
+     * Required since jjwt 0.12 : a token whose header declares an algorithm can no longer
+     * be parsed without its signature.
      * 
      * @param strBase64JWT
-     * @return the JWT without signature
+     * @return the unsecured JWT
      */
-    private static String removeSignature( String strBase64JWT )
+    private static String getUnsecuredBase64JWT( String strBase64JWT )
     {
-        int i = strBase64JWT.lastIndexOf( "." );
-        return strBase64JWT.substring( 0, i + 1 );
+        String strPayload = strBase64JWT.split( "\\." ) [1];
+        return NO_SECURITY_ALG_HEADER + strPayload + ".";
     }
 }

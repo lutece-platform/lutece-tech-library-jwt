@@ -1,14 +1,13 @@
-<?xml version="1.0"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <parent>
         <artifactId>lutece-global-pom</artifactId>
         <groupId>fr.paris.lutece.tools</groupId>
-        <version>5.2.1</version>
+        <version>7.0.8</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
     <groupId>fr.paris.lutece.plugins</groupId>
     <artifactId>library-jwt</artifactId>
-    <version>2.0.2</version>
+    <version>2.0.3</version>
     <name>Library JWT</name>
     <packaging>jar</packaging>
     <description>JWT library</description>
@@ -16,7 +15,7 @@
         <repository>
             <id>luteceSnapshot</id>
             <name>luteceSnapshot</name>
-            <url>http://dev.lutece.paris.fr/snapshot_repository</url>
+            <url>https://dev.lutece.paris.fr/snapshot_repository</url>
             <snapshots>
                 <enabled>true</enabled>
             </snapshots>
@@ -24,7 +23,7 @@
         <repository>
             <id>lutece</id>
             <name>luteceRepository</name>
-            <url>http://dev.lutece.paris.fr/maven_repository</url>
+            <url>https://dev.lutece.paris.fr/maven_repository</url>
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
@@ -36,10 +35,11 @@
         	<artifactId>log4j-api</artifactId>
         	<version>2.17.0</version>
     	</dependency>  
+        <!-- Used by JJWT JWT Parser implementation -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt</artifactId>
-            <version>[0.9.1,)</version>
+            <version>0.12.6</version>
         </dependency>
     </dependencies>
     <properties>
@@ -50,6 +50,6 @@
         <connection>scm:git:https://github.com/lutece-platform/lutece-tech-library-jwt.git</connection>
         <developerConnection>scm:git:https://github.com/lutece-platform/lutece-tech-library-jwt.git</developerConnection>
         <url>https://github.com/lutece-platform/lutece-tech-library-jwt.git</url>
-        <tag>library-jwt-2.0.2</tag>
+        <tag>library-jwt-2.0.3</tag>
     </scm>
 </project>
